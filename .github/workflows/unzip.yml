@@ -1,4 +1,4 @@
-name: Deploy Web
+name: Deploy Web App
 
 on:
   workflow_dispatch:
@@ -11,14 +11,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: Unzip project
-        run: unzip -o pulse.zip -x "*.git*" -d .
+        run: unzip -o auth-system-github.zip -x "*.git*" -d .
 
       - name: Install dependencies
         run: npm install
@@ -26,5 +26,5 @@ jobs:
       - name: Build project
         run: npm run build
 
-      - name: Verify build output
+      - name: Check build output
         run: ls -la
