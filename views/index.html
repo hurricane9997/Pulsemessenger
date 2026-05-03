@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="robots" content="noindex,nofollow">
+<meta http-equiv="Cache-Control" content="no-store">
+<title>SecureAuth — Sign In</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #06060e;
+  --surface: #0d0d1a;
+  --surface2: #121220;
+  --border: rgba(108,59,255,0.2);
+  --border-h: rgba(108,59,255,0.6);
+  --primary: #6c3bff;
+  --primary-l: #8f6bff;
+  --accent: #00d4ff;
+  --danger: #ff4466;
+  --success: #00e5a0;
+  --text: #e8e8f0;
+  --text-dim: #8888aa;
+  --text-faint: #44445a;
+  --glow: 0 0 40px rgba(108,59,255,0.25);
+  --glow-s: 0 0 20px rgba(108,59,255,0.15);
+  --font-display: 'Syne', sans-serif;
+  --font-mono: 'Space Mono', monospace;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+html, body {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-display);
+  overflow-x: hidden;
+}
+
+/* ── Canvas background ─────────────────────────────────── */
+#bg-canvas {
+  position: fixed; inset: 0; z-index: 0;
+  pointer-events: none;
+}
+
+/* ── Layout ────────────────────────────────────────────── */
+.page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Card ──────────────────────────────────────────────── */
+.card {
+  width: 100%;
+  max-width: 460px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 48px 40px;
+  box-shadow: var(--glow), inset 0 1px 0 rgba(255,255,255,0.04);
+  backdrop-filter: blur(20px);
+  animation: cardIn 0.5s cubic-bezier(0.16,1,0.3,1);
+  position: relative;
+  overflow: hidden;
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  top: -1px; left: 30%; right: 30%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--primary), transparent);
+}
+
+@keyframes cardIn {
+  from { opacity:0; transform: translateY(24px) scale(0.97); }
+  to   { opacity:1; transform: translateY(0) scale(1); }
+}
+
+/* ── Logo ──────────────────────────────────────────────── */
+.logo {
+  text-align: center;
+  margin-bottom: 32px;
+}
+.logo-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px; height: 56px;
+  background: linear-gradient(135deg, var(--primary), #3b82f6);
+  border-radius: 16px;
+  font-size: 26px;
+  margin-bottom: 12px;
+  box-shadow: 0 8px 32px rgba(108,59,255,0.4);
+}
+.logo h1 {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #fff, var(--primary-l));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.logo p {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  margin-top: 4px;
+  letter-spacing: 1px;
+}
+
+/* ── Step indicator ────────────────────────────────────── */
+.steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin-bottom: 32px;
+}
+.step-dot {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--text-faint);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+  color: var(--text-faint);
+  transition: all 0.3s ease;
+  position: relative;
+  z-index: 1;
+  background: var(--surface);
+  font-family: var(--font-mono);
+}
+.step-dot.active {
+  border-color: var(--primary);
+  color: #fff;
+  background: var(--primary);
+  box-shadow: 0 0 16px rgba(108,59,255,0.5);
+}
+.step-dot.done {
+  border-color: var(--success);
+  color: var(--success);
+  background: rgba(0,229,160,0.1);
+}
+.step-line {
+  flex: 1;
+  height: 2px;
+  max-width: 40px;
+  background: var(--text-faint);
+  transition: background 0.3s ease;
+}
+.step-line.done { background: var(--success); }
+
+/* ── Tab switcher ──────────────────────────────────────── */
+.tabs {
+  display: flex;
+  background: var(--surface2);
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 28px;
+  border: 1px solid var(--border);
+}
+.tab {
+  flex: 1;
+  padding: 10px;
+  border-radius: 9px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  letter-spacing: 0.5px;
+}
+.tab.active {
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(108,59,255,0.4);
+}
+
+/* ── Forms ─────────────────────────────────────────────── */
+.form-group {
+  margin-bottom: 18px;
+  position: relative;
+}
+label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+  font-family: var(--font-mono);
+}
+input {
+  width: 100%;
+  padding: 13px 16px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 15px;
+  font-family: var(--font-display);
+  transition: all 0.2s ease;
+  outline: none;
+  -webkit-appearance: none;
+}
+input::placeholder { color: var(--text-faint); }
+input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(108,59,255,0.15);
+  background: rgba(108,59,255,0.05);
+}
+input.error-input { border-color: var(--danger); }
+input.error-input:focus { box-shadow: 0 0 0 3px rgba(255,68,102,0.15); }
+
+.input-wrapper {
+  position: relative;
+}
+.input-wrapper input { padding-right: 44px; }
+.input-toggle {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 18px;
+  padding: 4px;
+  transition: color 0.2s;
+}
+.input-toggle:hover { color: var(--primary); }
+
+/* ── OTP Input ─────────────────────────────────────────── */
+.otp-group {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin: 4px 0;
+}
+.otp-digit {
+  width: 52px;
+  height: 60px;
+  text-align: center;
+  font-size: 24px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  padding: 0;
+  border-radius: 12px;
+  caret-color: var(--primary);
+}
+.otp-digit:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(108,59,255,0.2), 0 0 20px rgba(108,59,255,0.15);
+}
+
+/* ── Password strength ─────────────────────────────────── */
+.pwd-strength {
+  margin-top: 8px;
+  display: flex;
+  gap: 4px;
+}
+.pwd-bar {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--text-faint);
+  transition: background 0.3s ease;
+}
+.pwd-bar.w { background: var(--danger); }
+.pwd-bar.m { background: #ffaa00; }
+.pwd-bar.s { background: var(--success); }
+.pwd-label {
+  font-size: 11px;
+  margin-top: 5px;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  text-align: right;
+}
+
+/* ── Buttons ───────────────────────────────────────────── */
+.btn {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 10px;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+  margin-top: 4px;
+}
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary), #3b82f6);
+  color: #fff;
+  box-shadow: 0 4px 20px rgba(108,59,255,0.4);
+}
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 32px rgba(108,59,255,0.5);
+}
+.btn-primary:active { transform: translateY(0); }
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+.btn-ghost:hover { border-color: var(--primary); color: var(--primary); }
+
+.btn-loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.spinner {
+  display: none;
+  width: 18px; height: 18px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  margin: 0 auto;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.btn.loading .btn-text { opacity: 0; }
+.btn.loading .spinner { display: block; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+
+/* ── Alerts ────────────────────────────────────────────── */
+.alert {
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  animation: slideIn 0.3s ease;
+  line-height: 1.5;
+}
+@keyframes slideIn {
+  from { opacity:0; transform: translateY(-8px); }
+  to   { opacity:1; transform: translateY(0); }
+}
+.alert-error   { background: rgba(255,68,102,0.1); border: 1px solid rgba(255,68,102,0.3); color: #ff8899; }
+.alert-success { background: rgba(0,229,160,0.1); border: 1px solid rgba(0,229,160,0.3); color: var(--success); }
+.alert-info    { background: rgba(0,212,255,0.1); border: 1px solid rgba(0,212,255,0.3); color: var(--accent); }
+
+/* ── Misc ──────────────────────────────────────────────── */
+.divider {
+  display: flex; align-items: center; gap: 12px;
+  color: var(--text-faint); font-size: 12px;
+  margin: 20px 0;
+  font-family: var(--font-mono);
+}
+.divider::before, .divider::after {
+  content: ''; flex: 1; height: 1px; background: var(--border);
+}
+
+.link-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--primary-l); font-family: var(--font-display);
+  font-size: 13px; font-weight: 600;
+  text-decoration: underline; text-underline-offset: 3px;
+  transition: color 0.2s;
+}
+.link-btn:hover { color: #fff; }
+
+.text-center { text-align: center; }
+.text-sm { font-size: 13px; color: var(--text-dim); line-height: 1.6; }
+.mt-4 { margin-top: 16px; }
+.mt-3 { margin-top: 12px; }
+.mt-2 { margin-top: 8px; }
+
+.countdown {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-faint);
+  text-align: center;
+  margin-top: 12px;
+}
+.countdown span { color: var(--primary-l); }
+
+/* ── Section title ─────────────────────────────────────── */
+.section-title {
+  font-size: 22px;
+  font-weight: 800;
+  margin-bottom: 6px;
+  color: #fff;
+}
+.section-sub {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 28px;
+  line-height: 1.6;
+}
+
+/* ── Dashboard (post-login) ────────────────────────────── */
+.dashboard {
+  text-align: center;
+}
+.user-avatar {
+  width: 72px; height: 72px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), #3b82f6);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 28px; font-weight: 800; color: #fff;
+  margin-bottom: 16px;
+  box-shadow: 0 8px 32px rgba(108,59,255,0.4);
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 1px;
+  background: rgba(0,229,160,0.1);
+  border: 1px solid rgba(0,229,160,0.3);
+  color: var(--success);
+  margin-bottom: 20px;
+}
+
+/* ── Screen transitions ────────────────────────────────── */
+.screen { display: none; }
+.screen.active { display: block; animation: fadeIn 0.3s ease; }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Dev notice ────────────────────────────────────────── */
+.dev-notice {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  background: rgba(108,59,255,0.15);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  z-index: 100;
+  max-width: 280px;
+  line-height: 1.6;
+}
+.dev-notice strong { color: var(--primary-l); }
+
+@media (max-width: 480px) {
+  .card { padding: 36px 24px; }
+  .otp-digit { width: 44px; height: 54px; font-size: 20px; }
+}
+</style>
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+
+<div class="page">
+  <div class="card">
+
+    <!-- Logo -->
+    <div class="logo">
+      <div class="logo-icon">🔐</div>
+      <h1>SecureAuth</h1>
+      <p>Zero-Trust Authentication</p>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <!-- SCREEN: Login / Register Tabs                 -->
+    <!-- ══════════════════════════════════════════════ -->
+    <div class="screen active" id="screen-main">
+      <div class="tabs">
+        <button class="tab active" id="tab-login" onclick="switchTab('login')">Sign In</button>
+        <button class="tab" id="tab-register" onclick="switchTab('register')">Create Account</button>
+      </div>
+
+      <!-- Login Form -->
+      <div id="form-login">
+        <div id="alert-login"></div>
+        <div class="form-group">
+          <label>Email Address</label>
+          <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email" maxlength="254">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <div class="input-wrapper">
+            <input type="password" id="login-password" placeholder="Your password" autocomplete="current-password" maxlength="200">
+            <button class="input-toggle" type="button" onclick="togglePwd('login-password', this)">👁</button>
+          </div>
+        </div>
+        <div class="text-center mt-2" style="margin-bottom:18px">
+          <button class="link-btn" onclick="showForgot()">Forgot password?</button>
+        </div>
+        <button class="btn btn-primary" id="btn-login" onclick="doLogin()">
+          <span class="btn-text">Sign In</span>
+          <div class="spinner"></div>
+        </button>
+      </div>
+
+      <!-- Register Form -->
+      <div id="form-register" style="display:none">
+        <div id="alert-register"></div>
+        <div class="form-group">
+          <label>Full Name</label>
+          <input type="text" id="reg-name" placeholder="John Doe" autocomplete="name" maxlength="100">
+        </div>
+        <div class="form-group">
+          <label>Email Address</label>
+          <input type="email" id="reg-email" placeholder="you@example.com" autocomplete="email" maxlength="254">
+        </div>
+        <div class="form-group">
+          <label>Phone Number</label>
+          <input type="tel" id="reg-phone" placeholder="+1 234 567 8900" autocomplete="tel" maxlength="20">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <div class="input-wrapper">
+            <input type="password" id="reg-password" placeholder="Min 8 chars, mixed case + symbol" autocomplete="new-password" maxlength="200" oninput="checkStrength(this.value)">
+            <button class="input-toggle" type="button" onclick="togglePwd('reg-password', this)">👁</button>
+          </div>
+          <div class="pwd-strength">
+            <div class="pwd-bar" id="ps1"></div>
+            <div class="pwd-bar" id="ps2"></div>
+            <div class="pwd-bar" id="ps3"></div>
+            <div class="pwd-bar" id="ps4"></div>
+          </div>
+          <div class="pwd-label" id="pwd-label"></div>
+        </div>
+        <div class="form-group">
+          <label>Confirm Password</label>
+          <div class="input-wrapper">
+            <input type="password" id="reg-confirm" placeholder="Repeat password" autocomplete="new-password" maxlength="200">
+            <button class="input-toggle" type="button" onclick="togglePwd('reg-confirm', this)">👁</button>
+          </div>
+        </div>
+        <button class="btn btn-primary" id="btn-register" onclick="doRegister()">
+          <span class="btn-text">Create Account</span>
+          <div class="spinner"></div>
+        </button>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <!-- SCREEN: Verify Email OTP (Registration)       -->
+    <!-- ══════════════════════════════════════════════ -->
+    <div class="screen" id="screen-verify-email">
+      <div class="steps">
+        <div class="step-dot active">1</div>
+        <div class="step-line" id="sl1"></div>
+        <div class="step-dot" id="sd2">2</div>
+        <div class="step-line" id="sl2"></div>
+        <div class="step-dot" id="sd3">3</div>
+      </div>
+      <div class="section-title">Verify Email</div>
+      <div class="section-sub" id="verify-email-sub">Enter the 6-digit code sent to your email.</div>
+      <div id="alert-verify-email"></div>
+      <div class="form-group">
+        <label>Email OTP</label>
+        <div class="otp-group" id="otp-email-group">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-idx="0">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-idx="1">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-idx="2">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-idx="3">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-idx="4">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-idx="5">
+        </div>
+      </div>
+      <button class="btn btn-primary mt-3" id="btn-verify-email" onclick="doVerifyEmail()">
+        <span class="btn-text">Verify Email</span>
+        <div class="spinner"></div>
+      </button>
+      <div class="countdown" id="countdown-email"></div>
+      <div class="text-center mt-3">
+        <button class="link-btn" onclick="resendOtp('email-reg')">Resend code</button>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <!-- SCREEN: Verify Phone OTP (Registration)       -->
+    <!-- ══════════════════════════════════════════════ -->
+    <div class="screen" id="screen-verify-phone">
+      <div class="steps">
+        <div class="step-dot done">✓</div>
+        <div class="step-line done"></div>
+        <div class="step-dot active">2</div>
+        <div class="step-line" id="sl3"></div>
+        <div class="step-dot" id="sd4">3</div>
+      </div>
+      <div class="section-title">Verify Phone</div>
+      <div class="section-sub" id="verify-phone-sub">Enter the 6-digit code sent via SMS.</div>
+      <div id="alert-verify-phone"></div>
+      <div class="form-group">
+        <label>SMS OTP</label>
+        <div class="otp-group" id="otp-phone-group">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-idx="0">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-idx="1">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-idx="2">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-idx="3">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-idx="4">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-idx="5">
+        </div>
+      </div>
+      <button class="btn btn-primary mt-3" id="btn-verify-phone" onclick="doVerifyPhone()">
+        <span class="btn-text">Verify Phone</span>
+        <div class="spinner"></div>
+      </button>
+      <div class="countdown" id="countdown-phone"></div>
+      <div class="text-center mt-3">
+        <button class="link-btn" onclick="resendOtp('phone-reg')">Resend code</button>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <!-- SCREEN: Forgot Password → Enter Email         -->
+    <!-- ══════════════════════════════════════════════ -->
+    <div class="screen" id="screen-forgot">
+      <div class="section-title">Reset Password</div>
+      <div class="section-sub">Enter your registered email to receive a reset code.</div>
+      <div id="alert-forgot"></div>
+      <div class="form-group">
+        <label>Email Address</label>
+        <input type="email" id="forgot-email" placeholder="you@example.com" maxlength="254" autocomplete="email">
+      </div>
+      <button class="btn btn-primary" id="btn-forgot" onclick="doForgot()">
+        <span class="btn-text">Send Reset Code</span>
+        <div class="spinner"></div>
+      </button>
+      <div class="text-center mt-4">
+        <button class="link-btn" onclick="showScreen('screen-main')">← Back to Sign In</button>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <!-- SCREEN: Verify Reset Email OTP               -->
+    <!-- ══════════════════════════════════════════════ -->
+    <div class="screen" id="screen-verify-reset-email">
+      <div class="steps">
+        <div class="step-dot active">1</div>
+        <div class="step-line" id="rsl1"></div>
+        <div class="step-dot" id="rsd2">2</div>
+        <div class="step-line" id="rsl2"></div>
+        <div class="step-dot" id="rsd3">3</div>
+      </div>
+      <div class="section-title">Email Verification</div>
+      <div class="section-sub">Enter the 6-digit code sent to your email.</div>
+      <div id="alert-verify-reset-email"></div>
+      <div class="form-group">
+        <label>Reset Code (Email)</label>
+        <div class="otp-group" id="otp-reset-email-group">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-idx="0">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-idx="1">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-idx="2">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-idx="3">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-idx="4">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-idx="5">
+        </div>
+      </div>
+      <button class="btn btn-primary mt-3" id="btn-verify-reset-email" onclick="doVerifyResetEmail()">
+        <span class="btn-text">Verify</span>
+        <div class="spinner"></div>
+      </button>
+      <div class="text-center mt-3">
+        <button class="link-btn" onclick="resendOtp('email-reset')">Resend code</button>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <!-- SCREEN: Verify Reset Phone OTP               -->
+    <!-- ══════════════════════════════════════════════ -->
+    <div class="screen" id="screen-verify-reset-phone">
+      <div class="steps">
+        <div class="step-dot done">✓</div>
+        <div class="step-line done"></div>
+        <div class="step-dot active">2</div>
+        <div class="step-line" id="rsl3"></div>
+        <div class="step-dot" id="rsd4">3</div>
+      </div>
+      <div class="section-title">Phone Verification</div>
+      <div class="section-sub">Enter the 6-digit code sent via SMS.</div>
+      <div id="alert-verify-reset-phone"></div>
+      <div class="form-group">
+        <label>Reset Code (SMS)</label>
+        <div class="otp-group" id="otp-reset-phone-group">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-idx="0">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-idx="1">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-idx="2">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-idx="3">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-idx="4">
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" data-idx="5">
+        </div>
+      </div>
+      <button class="btn btn-primary mt-3" id="btn-verify-reset-phone" onclick="doVerifyResetPhone()">
+        <span class="btn-text">Verify</span>
+        <div class="spinner"></div>
+      </button>
+      <div class="text-center mt-3">
+        <button class="link-btn" onclick="resendOtp('phone-reset')">Resend code</button>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <!-- SCREEN: New Password                          -->
+    <!-- ══════════════════════════════════════════════ -->
+    <div class="screen" id="screen-new-password">
+      <div class="steps">
+        <div class="step-dot done">✓</div>
+        <div class="step-line done"></div>
+        <div class="step-dot done">✓</div>
+        <div class="step-line done"></div>
+        <div class="step-dot active">3</div>
+      </div>
+      <div class="section-title">New Password</div>
+      <div class="section-sub">Choose a strong password for your account.</div>
+      <div id="alert-new-password"></div>
+      <div class="form-group">
+        <label>New Password</label>
+        <div class="input-wrapper">
+          <input type="password" id="new-password" placeholder="Min 8 chars, mixed case + symbol" maxlength="200" oninput="checkStrength2(this.value)" autocomplete="new-password">
+          <button class="input-toggle" type="button" onclick="togglePwd('new-password', this)">👁</button>
+        </div>
+        <div class="pwd-strength">
+          <div class="pwd-bar" id="ps5"></div>
+          <div class="pwd-bar" id="ps6"></div>
+          <div class="pwd-bar" id="ps7"></div>
+          <div class="pwd-bar" id="ps8"></div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Confirm Password</label>
+        <div class="input-wrapper">
+          <input type="password" id="new-confirm" placeholder="Repeat password" maxlength="200" autocomplete="new-password">
+          <button class="input-toggle" type="button" onclick="togglePwd('new-confirm', this)">👁</button>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="btn-new-password" onclick="doResetPassword()">
+        <span class="btn-text">Set New Password</span>
+        <div class="spinner"></div>
+      </button>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <!-- SCREEN: Dashboard (logged in)                 -->
+    <!-- ══════════════════════════════════════════════ -->
+    <div class="screen" id="screen-dashboard">
+      <div class="dashboard">
+        <div class="user-avatar" id="dash-avatar">J</div>
+        <div class="badge">● AUTHENTICATED</div>
+        <div style="font-size:22px;font-weight:800;color:#fff;margin-bottom:4px" id="dash-name">John Doe</div>
+        <div style="font-size:13px;color:var(--text-dim);margin-bottom:24px;font-family:var(--font-mono)" id="dash-email">john@example.com</div>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:24px;text-align:left">
+          <div style="font-size:11px;font-family:var(--font-mono);color:var(--text-faint);letter-spacing:1px;margin-bottom:10px">SESSION INFO</div>
+          <div style="font-size:12px;color:var(--text-dim);font-family:var(--font-mono)" id="dash-session"></div>
+        </div>
+        <button class="btn btn-ghost" onclick="doLogout()">Sign Out</button>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <!-- SCREEN: Success                               -->
+    <!-- ══════════════════════════════════════════════ -->
+    <div class="screen" id="screen-success">
+      <div style="text-align:center;padding:20px 0">
+        <div style="font-size:64px;margin-bottom:16px" id="success-icon">✅</div>
+        <div style="font-size:22px;font-weight:800;color:#fff;margin-bottom:8px" id="success-title">All Done!</div>
+        <div style="font-size:14px;color:var(--text-dim);margin-bottom:28px;line-height:1.6" id="success-msg"></div>
+        <button class="btn btn-primary" id="success-btn" onclick="showScreen('screen-main')">
+          <span class="btn-text" id="success-btn-text">Continue</span>
+          <div class="spinner"></div>
+        </button>
+      </div>
+    </div>
+
+  </div><!-- .card -->
+</div><!-- .page -->
+
+<!-- Dev notice -->
+<div class="dev-notice" id="dev-notice">
+  <strong>⚠ Dev Mode</strong><br>
+  OTPs logged to server console.<br>
+  Set env vars to enable real email/SMS.
+</div>
+
+<script nonce="{{NONCE}}">
+// ─── Canvas Particle Background ─────────────────────────────────────────────
+(function() {
+  const canvas = document.getElementById('bg-canvas');
+  const ctx = canvas.getContext('2d');
+  let W, H, particles = [];
+
+  const resize = () => {
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  };
+  window.addEventListener('resize', resize);
+  resize();
+
+  for (let i = 0; i < 60; i++) {
+    particles.push({
+      x: Math.random() * 1920,
+      y: Math.random() * 1080,
+      vx: (Math.random() - 0.5) * 0.3,
+      vy: (Math.random() - 0.5) * 0.3,
+      r: Math.random() * 1.5 + 0.5,
+      a: Math.random() * 0.4 + 0.1,
+    });
+  }
+
+  const draw = () => {
+    ctx.clearRect(0, 0, W, H);
+    // Grid
+    ctx.strokeStyle = 'rgba(108,59,255,0.04)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < W; x += 60) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+    for (let y = 0; y < H; y += 60) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+    // Particles + connections
+    particles.forEach((p, i) => {
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
+      if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx.fillStyle = `rgba(108,59,255,${p.a})`;
+      ctx.fill();
+      for (let j = i+1; j < particles.length; j++) {
+        const q = particles[j];
+        const d = Math.hypot(p.x-q.x, p.y-q.y);
+        if (d < 120) {
+          ctx.beginPath();
+          ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y);
+          ctx.strokeStyle = `rgba(108,59,255,${0.06*(1-d/120)})`;
+          ctx.stroke();
+        }
+      }
+    });
+    requestAnimationFrame(draw);
+  };
+  draw();
+})();
+
+// ─── OTP Input Wiring ────────────────────────────────────────────────────────
+document.querySelectorAll('.otp-group').forEach(group => {
+  const inputs = group.querySelectorAll('.otp-digit');
+  inputs.forEach((inp, i) => {
+    inp.addEventListener('input', e => {
+      const v = inp.value.replace(/\D/g,'');
+      inp.value = v ? v[v.length-1] : '';
+      if (inp.value && i < inputs.length - 1) inputs[i+1].focus();
+    });
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Backspace' && !inp.value && i > 0) inputs[i-1].focus();
+      if (e.key === 'ArrowLeft' && i > 0) inputs[i-1].focus();
+      if (e.key === 'ArrowRight' && i < inputs.length-1) inputs[i+1].focus();
+    });
+    inp.addEventListener('paste', e => {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g,'').slice(0,6);
+      text.split('').forEach((c, j) => { if (inputs[j]) inputs[j].value = c; });
+      const next = Math.min(text.length, inputs.length-1);
+      inputs[next].focus();
+    });
+  });
+});
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let currentTab = 'login';
+let countdownTimer = null;
+
+// ─── Screen Management ───────────────────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo(0,0);
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById('form-login').style.display    = tab === 'login'    ? 'block' : 'none';
+  document.getElementById('form-register').style.display = tab === 'register' ? 'block' : 'none';
+  document.getElementById('tab-login').classList.toggle('active',    tab === 'login');
+  document.getElementById('tab-register').classList.toggle('active', tab === 'register');
+  clearAlert('login'); clearAlert('register');
+}
+
+function showForgot() { showScreen('screen-forgot'); clearAlert('forgot'); }
+
+// ─── Alert helpers ────────────────────────────────────────────────────────────
+function showAlert(id, msg, type='error') {
+  const el = document.getElementById('alert-'+id);
+  if (!el) return;
+  const icon = type==='error' ? '⚠️' : type==='success' ? '✅' : 'ℹ️';
+  el.innerHTML = `<div class="alert alert-${type}">${icon} ${escHtml(msg)}</div>`;
+}
+function clearAlert(id) {
+  const el = document.getElementById('alert-'+id);
+  if (el) el.innerHTML = '';
+}
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── Loading state ────────────────────────────────────────────────────────────
+function setLoading(btnId, on) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  btn.disabled = on;
+  btn.classList.toggle('loading', on);
+}
+
+// ─── OTP helpers ─────────────────────────────────────────────────────────────
+function getOtp(groupId) {
+  return [...document.getElementById(groupId).querySelectorAll('.otp-digit')]
+    .map(i => i.value).join('');
+}
+function clearOtp(groupId) {
+  document.getElementById(groupId).querySelectorAll('.otp-digit')
+    .forEach(i => { i.value = ''; });
+  document.getElementById(groupId).querySelector('.otp-digit').focus();
+}
+
+// ─── Countdown ────────────────────────────────────────────────────────────────
+function startCountdown(elId, secs) {
+  clearInterval(countdownTimer);
+  const el = document.getElementById(elId);
+  if (!el) return;
+  let remaining = secs;
+  const tick = () => {
+    if (remaining <= 0) { el.textContent = 'Code expired. Request a new one.'; clearInterval(countdownTimer); return; }
+    const m = Math.floor(remaining/60), s = remaining%60;
+    el.innerHTML = `Code expires in <span>${m}:${s<10?'0':''}${s}</span>`;
+    remaining--;
+  };
+  tick();
+  countdownTimer = setInterval(tick, 1000);
+}
+
+// ─── Password Strength ────────────────────────────────────────────────────────
+function scorePassword(pwd) {
+  let score = 0;
+  if (pwd.length >= 8) score++;
+  if (/[A-Z]/.test(pwd) && /[a-z]/.test(pwd)) score++;
+  if (/\d/.test(pwd)) score++;
+  if (/[@$!%*?&#^()_+\-=]/.test(pwd)) score++;
+  return score;
+}
+function applyStrength(ids, score) {
+  const labels = ['','Weak','Fair','Good','Strong'];
+  const classes = ['','w','m','s','s'];
+  ids.forEach((id, idx) => {
+    const el = document.getElementById(id);
+    el.className = 'pwd-bar' + (idx < score ? ' '+classes[score] : '');
+  });
+  return labels[score] || '';
+}
+function checkStrength(v) {
+  const s = scorePassword(v);
+  const label = applyStrength(['ps1','ps2','ps3','ps4'], s);
+  document.getElementById('pwd-label').textContent = v.length ? label : '';
+}
+function checkStrength2(v) { applyStrength(['ps5','ps6','ps7','ps8'], scorePassword(v)); }
+
+// ─── Toggle Password ──────────────────────────────────────────────────────────
+function togglePwd(id, btn) {
+  const inp = document.getElementById(id);
+  if (inp.type === 'password') { inp.type = 'text'; btn.textContent = '🙈'; }
+  else { inp.type = 'password'; btn.textContent = '👁'; }
+}
+
+// ─── API Calls ────────────────────────────────────────────────────────────────
+async function api(path, body) {
+  const res = await fetch('/api/auth' + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  return { ok: res.ok, status: res.status, data };
+}
+
+// ─── Register ─────────────────────────────────────────────────────────────────
+async function doRegister() {
+  clearAlert('register');
+  const fullName = document.getElementById('reg-name').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  const phone = document.getElementById('reg-phone').value.trim();
+  const password = document.getElementById('reg-password').value;
+  const confirmPassword = document.getElementById('reg-confirm').value;
+
+  if (scorePassword(password) < 3) return showAlert('register', 'Password is too weak. Add uppercase, numbers, and symbols.');
+
+  setLoading('btn-register', true);
+  try {
+    const { ok, data } = await api('/register', { fullName, email, phone, password, confirmPassword });
+    if (!ok) return showAlert('register', data.error || 'Registration failed.');
+    document.getElementById('verify-email-sub').textContent = data.message || 'Check your email for the OTP.';
+    showScreen('screen-verify-email');
+    startCountdown('countdown-email', 600);
+  } catch { showAlert('register', 'Network error. Please try again.'); }
+  finally { setLoading('btn-register', false); }
+}
+
+// ─── Login ────────────────────────────────────────────────────────────────────
+async function doLogin() {
+  clearAlert('login');
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  if (!email || !password) return showAlert('login', 'Please enter your email and password.');
+
+  setLoading('btn-login', true);
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) return showAlert('login', data.error || 'Login failed.');
+    showDashboard(data.user);
+  } catch { showAlert('login', 'Network error. Please try again.'); }
+  finally { setLoading('btn-login', false); }
+}
+
+function showDashboard(user) {
+  const name = user.name || 'User';
+  document.getElementById('dash-name').textContent = name;
+  document.getElementById('dash-email').textContent = user.email || '';
+  document.getElementById('dash-avatar').textContent = name[0].toUpperCase();
+  document.getElementById('dash-session').innerHTML =
+    `Signed in: ${new Date().toLocaleString()}<br>Email: ${user.email}`;
+  showScreen('screen-dashboard');
+}
+
+async function doLogout() {
+  await fetch('/api/auth/logout', { method:'POST', credentials:'same-origin' });
+  showScreen('screen-main');
+  document.getElementById('login-email').value = '';
+  document.getElementById('login-password').value = '';
+}
+
+// ─── Verify Email OTP ─────────────────────────────────────────────────────────
+async function doVerifyEmail() {
+  clearAlert('verify-email');
+  const otp = getOtp('otp-email-group');
+  if (otp.length !== 6) return showAlert('verify-email', 'Enter all 6 digits.');
+
+  setLoading('btn-verify-email', true);
+  try {
+    const { ok, data } = await api('/verify-email', { otp });
+    if (!ok) { clearOtp('otp-email-group'); return showAlert('verify-email', data.error || 'Invalid OTP.'); }
+    document.getElementById('verify-phone-sub').textContent = data.message || 'Check your phone for the OTP.';
+    showScreen('screen-verify-phone');
+    startCountdown('countdown-phone', 600);
+  } catch { showAlert('verify-email', 'Network error.'); }
+  finally { setLoading('btn-verify-email', false); }
+}
+
+// ─── Verify Phone OTP ─────────────────────────────────────────────────────────
+async function doVerifyPhone() {
+  clearAlert('verify-phone');
+  const otp = getOtp('otp-phone-group');
+  if (otp.length !== 6) return showAlert('verify-phone', 'Enter all 6 digits.');
+
+  setLoading('btn-verify-phone', true);
+  try {
+    const { ok, data } = await api('/verify-phone', { otp });
+    if (!ok) { clearOtp('otp-phone-group'); return showAlert('verify-phone', data.error || 'Invalid OTP.'); }
+    showSuccess('🎉', 'Account Activated!', data.message || 'Your account is now active.', 'Sign In', () => {
+      switchTab('login'); showScreen('screen-main');
+    });
+  } catch { showAlert('verify-phone', 'Network error.'); }
+  finally { setLoading('btn-verify-phone', false); }
+}
+
+// ─── Forgot Password ──────────────────────────────────────────────────────────
+async function doForgot() {
+  clearAlert('forgot');
+  const email = document.getElementById('forgot-email').value.trim();
+  if (!email) return showAlert('forgot', 'Email is required.');
+
+  setLoading('btn-forgot', true);
+  try {
+    const { ok, data } = await api('/forgot-password', { email });
+    if (!ok) return showAlert('forgot', data.error || 'Request failed.');
+    showAlert('forgot', data.message, 'info');
+    setTimeout(() => {
+      clearAlert('forgot');
+      clearOtp('otp-reset-email-group');
+      showScreen('screen-verify-reset-email');
+    }, 1800);
+  } catch { showAlert('forgot', 'Network error.'); }
+  finally { setLoading('btn-forgot', false); }
+}
+
+// ─── Verify Reset Email OTP ───────────────────────────────────────────────────
+async function doVerifyResetEmail() {
+  clearAlert('verify-reset-email');
+  const otp = getOtp('otp-reset-email-group');
+  if (otp.length !== 6) return showAlert('verify-reset-email', 'Enter all 6 digits.');
+
+  setLoading('btn-verify-reset-email', true);
+  try {
+    const { ok, data } = await api('/verify-reset-email', { otp });
+    if (!ok) { clearOtp('otp-reset-email-group'); return showAlert('verify-reset-email', data.error || 'Invalid OTP.'); }
+    clearOtp('otp-reset-phone-group');
+    showScreen('screen-verify-reset-phone');
+  } catch { showAlert('verify-reset-email', 'Network error.'); }
+  finally { setLoading('btn-verify-reset-email', false); }
+}
+
+// ─── Verify Reset Phone OTP ───────────────────────────────────────────────────
+async function doVerifyResetPhone() {
+  clearAlert('verify-reset-phone');
+  const otp = getOtp('otp-reset-phone-group');
+  if (otp.length !== 6) return showAlert('verify-reset-phone', 'Enter all 6 digits.');
+
+  setLoading('btn-verify-reset-phone', true);
+  try {
+    const { ok, data } = await api('/verify-reset-phone', { otp });
+    if (!ok) { clearOtp('otp-reset-phone-group'); return showAlert('verify-reset-phone', data.error || 'Invalid OTP.'); }
+    showScreen('screen-new-password');
+  } catch { showAlert('verify-reset-phone', 'Network error.'); }
+  finally { setLoading('btn-verify-reset-phone', false); }
+}
+
+// ─── Reset Password ───────────────────────────────────────────────────────────
+async function doResetPassword() {
+  clearAlert('new-password');
+  const password = document.getElementById('new-password').value;
+  const confirmPassword = document.getElementById('new-confirm').value;
+  if (scorePassword(password) < 3) return showAlert('new-password', 'Password is too weak.');
+
+  setLoading('btn-new-password', true);
+  try {
+    const { ok, data } = await api('/reset-password', { password, confirmPassword });
+    if (!ok) return showAlert('new-password', data.error || 'Reset failed.');
+    showSuccess('🔑', 'Password Reset!', data.message || 'Your password has been updated.', 'Sign In', () => {
+      switchTab('login'); showScreen('screen-main');
+    });
+  } catch { showAlert('new-password', 'Network error.'); }
+  finally { setLoading('btn-new-password', false); }
+}
+
+// ─── Resend OTP ───────────────────────────────────────────────────────────────
+async function resendOtp(type) {
+  try {
+    const { ok, data } = await api('/resend-otp', { type });
+    const alertId = type.includes('email') ? (type.includes('reset') ? 'verify-reset-email' : 'verify-email') : (type.includes('reset') ? 'verify-reset-phone' : 'verify-phone');
+    if (ok) showAlert(alertId, data.message, 'success');
+    else showAlert(alertId, data.error || 'Failed to resend.');
+  } catch { console.error('Resend failed'); }
+}
+
+// ─── Success screen ───────────────────────────────────────────────────────────
+function showSuccess(icon, title, msg, btnText, cb) {
+  document.getElementById('success-icon').textContent = icon;
+  document.getElementById('success-title').textContent = title;
+  document.getElementById('success-msg').textContent = msg;
+  document.getElementById('success-btn-text').textContent = btnText;
+  document.getElementById('success-btn').onclick = cb;
+  showScreen('screen-success');
+}
+
+// ─── Check auth on load ───────────────────────────────────────────────────────
+(async () => {
+  try {
+    const res = await fetch('/api/auth/me', { credentials: 'same-origin' });
+    const data = await res.json();
+    if (data.authenticated) showDashboard(data.user);
+  } catch {}
+})();
+
+// Hide dev notice if env looks configured (can't know server side but keep it visible)
+// It's cosmetic - the server logs will show DEV mode clearly
+</script>
+</body>
+</html>

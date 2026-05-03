@@ -97,23 +97,33 @@ const globalLimiter = rateLimit({
 });
 app.use(globalLimiter);
 
-// ─── Static Files ────────────────────────────────────────────────────────────
+// ─── Static Files (assets only — HTML served dynamically for CSP nonce) ──────
 app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: '1d',
   etag: true,
+  index: false,
 }));
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 
-// ─── Health Check (Railway uses this — must return 200) ──────────────────────
+// ─── Health Check ─────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', uptime: process.uptime(), ts: Date.now() });
 });
 
-// Serve the SPA
+// ─── Serve SPA with nonce injected so CSP allows inline scripts ───────────────
+const fs = require('fs');
+const indexPath = path.join(__dirname, 'views', 'index.html');
+let indexCache = null;
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  if (!indexCache || process.env.NODE_ENV !== 'production') {
+    indexCache = fs.readFileSync(indexPath, 'utf8');
+  }
+  const html = indexCache.replace('{{NONCE}}', res.locals.nonce);
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(html);
 });
 
 // ─── 404 & Error Handler ─────────────────────────────────────────────────────
