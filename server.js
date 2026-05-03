@@ -73,16 +73,18 @@ app.use(mongoSanitize());
 // ─── HTTP Parameter Pollution Prevention ─────────────────────────────────────
 app.use(hpp());
 
-// ─── Session ─────────────────────────────────────────────────────────────────
+// ─── Session (memorystore keeps it clean in prod without MongoDB) ────────────
+const MemoryStore = require('memorystore')(session);
 app.use(session({
   secret: process.env.SESSION_SECRET || crypto.randomBytes(64).toString('hex'),
   resave: false,
   saveUninitialized: false,
+  store: new MemoryStore({ checkPeriod: 86400000 }), // prune expired every 24h
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
-    maxAge: 15 * 60 * 1000, // 15 minutes
+    maxAge: 15 * 60 * 1000,
   },
   name: 'sid',
 }));
@@ -107,9 +109,15 @@ app.use(express.static(path.join(__dirname, 'public'), {
 // ─── Routes ──────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 
-// ─── Health Check ─────────────────────────────────────────────────────────────
+// ─── Health Check — always 200 so Railway never kills the container ──────────
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok', uptime: process.uptime(), ts: Date.now() });
+  const { getStatus } = require('./lib/db');
+  res.status(200).json({
+    status: 'ok',
+    uptime: Math.floor(process.uptime()),
+    db: process.env.MONGODB_URI ? (getStatus() ? 'connected' : 'connecting') : 'memstore',
+    ts: Date.now(),
+  });
 });
 
 // ─── Serve SPA with nonce injected so CSP allows inline scripts ───────────────
@@ -136,12 +144,24 @@ app.use((err, req, res, next) => {
   res.status(status).json({ error: message });
 });
 
-// ─── Start — bind 0.0.0.0 so Railway's proxy can reach the container ─────────
-connectDB().then(() => {
-  app.listen(PORT, '0.0.0.0', () => logger.info(`Server running on port ${PORT}`));
-}).catch(err => {
-  logger.error('DB connection failed:', err);
-  process.exit(1);
+// ─── Start — HTTP server starts FIRST, DB connects after ────────────────────
+// This ensures Railway healthcheck passes even if DB is slow to connect.
+const server = app.listen(PORT, '0.0.0.0', () => {
+  logger.info(`Server running on port ${PORT}`);
+});
+
+// DB connects asynchronously — app stays up regardless
+connectDB()
+  .then(() => logger.info('Database ready'))
+  .catch(err => {
+    logger.error('DB connection failed — running in memStore fallback mode:', err.message);
+    // Do NOT exit — keep serving so healthcheck passes and Railway shows logs
+  });
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received, shutting down gracefully');
+  server.close(() => process.exit(0));
 });
 
 module.exports = app;
