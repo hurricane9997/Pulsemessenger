@@ -55,8 +55,14 @@ app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(cookieParser());
 
 // ─── CORS ────────────────────────────────────────────────────────────────────
+const allowedOrigins = [process.env.APP_URL, `http://localhost:${PORT}`].filter(Boolean);
 app.use(cors({
-  origin: process.env.APP_URL || `http://localhost:${PORT}`,
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true); // same-site / mobile
+    if (allowedOrigins.includes(origin) || /\.railway\.app$/.test(origin))
+      return cb(null, true);
+    cb(new Error('Not allowed by CORS'));
+  },
   credentials: true,
   methods: ['GET', 'POST'],
 }));
@@ -75,10 +81,10 @@ app.use(session({
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
-    sameSite: 'strict',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
     maxAge: 15 * 60 * 1000, // 15 minutes
   },
-  name: '__Host-sid',
+  name: 'sid',
 }));
 
 // ─── Global Rate Limiters ────────────────────────────────────────────────────
@@ -100,6 +106,11 @@ app.use(express.static(path.join(__dirname, 'public'), {
 // ─── Routes ──────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 
+// ─── Health Check (Railway uses this — must return 200) ──────────────────────
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', uptime: process.uptime(), ts: Date.now() });
+});
+
 // Serve the SPA
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -115,9 +126,9 @@ app.use((err, req, res, next) => {
   res.status(status).json({ error: message });
 });
 
-// ─── Start ───────────────────────────────────────────────────────────────────
+// ─── Start — bind 0.0.0.0 so Railway's proxy can reach the container ─────────
 connectDB().then(() => {
-  app.listen(PORT, () => logger.info(`Server running on port ${PORT}`));
+  app.listen(PORT, '0.0.0.0', () => logger.info(`Server running on port ${PORT}`));
 }).catch(err => {
   logger.error('DB connection failed:', err);
   process.exit(1);
