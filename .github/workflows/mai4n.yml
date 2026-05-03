@@ -1,10 +1,7 @@
-name: Unzip Pulse (Guaranteed)
+name: Unzip Pulse
 
 on:
   workflow_dispatch:
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   unzip:
@@ -13,26 +10,28 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
-
-      - name: Show repo files BEFORE
-        run: ls -la
+        with:
+          persist-credentials: true
 
       - name: Install unzip
         run: sudo apt-get update && sudo apt-get install -y unzip
 
-      - name: Check ZIP content
-        run: unzip -l pulse.zip
-
-      - name: Unzip to root
+      - name: Unzip file
         run: unzip -o pulse.zip
 
-      - name: Show files AFTER unzip
-        run: ls -la
-
-      - name: Commit extracted files
+      - name: Configure Git
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git add .
-          git commit -m "Unzipped pulse.zip" || echo "No changes"
-          git push
+
+      - name: Add changes
+        run: git add .
+
+      - name: Commit changes
+        run: git commit -m "Unzipped pulse.zip" || echo "No changes to commit"
+
+      - name: Pull latest (avoid conflict)
+        run: git pull --rebase
+
+      - name: Push changes
+        run: git push
