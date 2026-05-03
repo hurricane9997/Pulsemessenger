@@ -1,4 +1,4 @@
-name: Unzip Pulse (Correct)
+name: Unzip Pulse (Guaranteed)
 
 on:
   workflow_dispatch:
@@ -14,22 +14,25 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: Show repo files BEFORE
+        run: ls -la
+
       - name: Install unzip
         run: sudo apt-get update && sudo apt-get install -y unzip
 
-      - name: Unzip directly to root
-        run: unzip -o pulse.zip -d .
+      - name: Check ZIP content
+        run: unzip -l pulse.zip
 
-      - name: Remove .git if accidentally included
-        run: rm -rf .git
+      - name: Unzip to root
+        run: unzip -o pulse.zip
 
-      - name: Show files
+      - name: Show files AFTER unzip
         run: ls -la
 
-      - name: Commit files
+      - name: Commit extracted files
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add .
-          git commit -m "Extracted pulse.zip" || echo "No changes"
+          git commit -m "Unzipped pulse.zip" || echo "No changes"
           git push
