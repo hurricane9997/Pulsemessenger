@@ -1,7 +1,10 @@
-name: Extract Pulse (No Unzip Error)
+name: Extract Pulse (Final Fix)
 
 on:
   workflow_dispatch:
+
+permissions:
+  contents: write   # 🔥 THIS FIXES ERROR 128 (403)
 
 jobs:
   extract:
@@ -11,9 +14,6 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Show files before
-        run: ls -la
-
       - name: Extract zip using Python
         run: |
           python3 - <<EOF
@@ -22,16 +22,10 @@ jobs:
               zip_ref.extractall('temp')
           EOF
 
-      - name: Show extracted files
-        run: ls -R temp
-
       - name: Move files to root
         run: |
           cp -r temp/* .
           rm -rf temp
-
-      - name: Show final files
-        run: ls -la
 
       - name: Commit changes
         run: |
