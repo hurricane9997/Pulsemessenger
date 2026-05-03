@@ -1,35 +1,34 @@
-name: Unzip Pulse (Stable)
+name: Extract Pulse (No Unzip Error)
 
 on:
   workflow_dispatch:
 
 jobs:
-  unzip:
+  extract:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Install tools
+      - name: Show files before
+        run: ls -la
+
+      - name: Extract zip using Python
         run: |
-          sudo apt-get update
-          sudo apt-get install -y unzip rsync
+          python3 - <<EOF
+          import zipfile
+          with zipfile.ZipFile('pulse.zip', 'r') as zip_ref:
+              zip_ref.extractall('temp')
+          EOF
 
-      - name: Create temp directory
-        run: mkdir temp
+      - name: Show extracted files
+        run: ls -R temp
 
-      - name: Extract zip safely
-        run: unzip -o pulse.zip -d temp
-
-      - name: Remove any .git from zip
-        run: rm -rf temp/.git
-
-      - name: Copy files to repo root
-        run: rsync -av temp/ .
-
-      - name: Cleanup
-        run: rm -rf temp
+      - name: Move files to root
+        run: |
+          cp -r temp/* .
+          rm -rf temp
 
       - name: Show final files
         run: ls -la
