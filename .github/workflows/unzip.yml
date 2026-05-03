@@ -1,44 +1,44 @@
-name: Unzip Folder (No Exit 128)
+
+name: Unzip Pulse to Root
 
 on:
   workflow_dispatch:
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   unzip:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install unzip
-        run: sudo apt-get update && sudo apt-get install -y unzip
-
-      - name: Create temp directory
-        run: mkdir temp_unzip
-
-      - name: Unzip into temp folder
-        run: unzip -o auth-system-github.zip -d temp_unzip
-
-      - name: Remove .git if exists in zip
-        run: rm -rf temp_unzip/.git
-
-      - name: Copy files to root
-        run: cp -r temp_unzip/* .
-
-      - name: Clean up
-        run: rm -rf temp_unzip
-
-      - name: List files
-        run: ls -la
-
-      - name: Commit changes (optional)
+      - name: Show current directory
         run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git add .
-          git commit -m "Unzipped project safely" || echo "No changes"
-          git push
+          pwd
+          ls -la
+
+      # If pulse.zip is inside your repo, make sure path is correct
+      - name: Check pulse.zip exists
+        run: |
+          if [ ! -f "pulse.zip" ]; then
+            echo "❌ pulse.zip not found!"
+            exit 1
+          fi
+          echo "✅ pulse.zip found"
+
+      - name: Unzip pulse.zip to root
+        run: |
+          unzip -o pulse.zip -d .
+          echo "After unzip:"
+          ls -la
+
+      # Optional: flatten if zip has a folder inside
+      - name: Flatten structure (optional)
+        run: |
+          shopt -s dotglob
+          for d in */ ; do
+            if [ "$d" != ".git/" ]; then
+              mv "$d"* . 2>/dev/null || true
+              rm -rf "$d"
+            fi
+          done
