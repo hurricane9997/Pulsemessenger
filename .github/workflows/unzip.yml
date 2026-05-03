@@ -1,8 +1,10 @@
-
 name: Unzip Pulse to Root
 
 on:
   workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # ✅ opt-in to Node 24
 
 jobs:
   unzip:
@@ -12,28 +14,29 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Show current directory
+      - name: Debug files
         run: |
           pwd
           ls -la
+          find . -name "*.zip"
 
-      # If pulse.zip is inside your repo, make sure path is correct
-      - name: Check pulse.zip exists
+      # If needed, download pulse.zip
+      # - name: Download pulse.zip
+      #   run: curl -L -o pulse.zip "YOUR_URL"
+
+      - name: Ensure pulse.zip exists
         run: |
           if [ ! -f "pulse.zip" ]; then
-            echo "❌ pulse.zip not found!"
+            echo "❌ pulse.zip not found"
             exit 1
           fi
-          echo "✅ pulse.zip found"
 
-      - name: Unzip pulse.zip to root
+      - name: Unzip to root
         run: |
           unzip -o pulse.zip -d .
-          echo "After unzip:"
           ls -la
 
-      # Optional: flatten if zip has a folder inside
-      - name: Flatten structure (optional)
+      - name: Flatten (if zip has folder inside)
         run: |
           shopt -s dotglob
           for d in */ ; do
