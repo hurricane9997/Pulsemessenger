@@ -1,7 +1,10 @@
-name: Extract Pulse (Fix 128)
+name: Unzip Pulse (Fix 127)
 
 on:
   workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   unzip:
@@ -11,30 +14,24 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Show files before
-        run: ls -la
-
-      - name: Extract using bsdtar
+      - name: Install tools
         run: |
-          mkdir temp
-          bsdtar -xf pulse.zip -C temp
+          sudo apt-get update
+          sudo apt-get install -y unzip rsync
 
-      - name: Show extracted files
-        run: ls -R temp
-
-      - name: Move files to root safely
-        run: rsync -av temp/ .
-
-      - name: Cleanup
-        run: rm -rf temp
-
-      - name: Show final files
+      - name: Check ZIP exists
         run: ls -la
 
-      - name: Commit changes
+      - name: Unzip file
+        run: unzip -o pulse.zip
+
+      - name: Verify extraction
+        run: ls -la
+
+      - name: Commit files
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add .
-          git commit -m "Extracted pulse.zip" || echo "No changes"
+          git commit -m "Unzipped pulse.zip" || echo "No changes"
           git push
