@@ -1,0 +1,45 @@
+name: Unzip Folder (No Exit 128)
+
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  unzip:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install unzip
+        run: sudo apt-get update && sudo apt-get install -y unzip
+
+      - name: Create temp directory
+        run: mkdir temp_unzip
+
+      - name: Unzip into temp folder
+        run: unzip -o auth-system-github.zip -d temp_unzip
+
+      - name: Remove .git if exists in zip
+        run: rm -rf temp_unzip/.git
+
+      - name: Copy files to root
+        run: cp -r temp_unzip/* .
+
+      - name: Clean up
+        run: rm -rf temp_unzip
+
+      - name: List files
+        run: ls -la
+
+      - name: Commit changes (optional)
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add .
+          git commit -m "Unzipped project safely" || echo "No changes"
+          git push
+          
