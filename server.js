@@ -30,16 +30,19 @@ app.use((req, res, next) => {
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", (req, res) => `'nonce-${res.locals.nonce}'`],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'"],
-      frameAncestors: ["'none'"],
-      formAction: ["'self'"],
+      defaultSrc:          ["'self'"],
+      scriptSrc:           ["'self'", (req, res) => `'nonce-${res.locals.nonce}'`],
+      scriptSrcAttr:       ["'none'"],   // we use no inline handlers — addEventListener only
+      styleSrc:            ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc:             ["'self'", "https://fonts.gstatic.com"],
+      imgSrc:              ["'self'", "data:", "https:"],
+      connectSrc:          ["'self'"],
+      frameAncestors:      ["'none'"],
+      formAction:          ["'self'"],
+      baseUri:             ["'self'"],
       upgradeInsecureRequests: [],
     },
+    reportOnly: false,
   },
   crossOriginEmbedderPolicy: false,
   hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
