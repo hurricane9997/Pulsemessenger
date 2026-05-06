@@ -1,74 +1,105 @@
-const express = require('express');
-const router = express.Router();
-const crypto = require('crypto');
-const rateLimit = require('express-rate-limit');
-const mongoose = require('mongoose');
-const logger = require('../lib/logger');
-const memStore = require('../lib/memStore');
-const { sendVerificationOtp, sendResetOtp, sendWelcomeEmail, sendSMS } = require('../lib/notifications');
+'use strict';
+
+const express    = require('express');
+const router     = express.Router();
+const crypto     = require('crypto');
+const rateLimit  = require('express-rate-limit');
+const logger     = require('../lib/logger');
+const memStore   = require('../lib/memStore');
+const sms        = require('../lib/sms');
+const { sendVerificationOtp, sendResetOtp, sendWelcomeEmail } = require('../lib/notifications');
 const { validateRegister, validateLogin, validateOtp, validatePassword } = require('../middleware/validate');
 
-// Lazy-load User model
-const getUser = () => {
-  try { return require('../models/User'); } catch { return null; }
-};
+const getUser = () => { try { return require('../models/User'); } catch { return null; } };
 
-// ─── Rate Limiters ────────────────────────────────────────────────────────────
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, message: { error: 'Too many attempts, try again in 15 minutes.' } });
-const otpLimiter  = rateLimit({ windowMs: 5 * 60 * 1000,  max: 5,  message: { error: 'Too many OTP attempts.' } });
-const resetLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, message: { error: 'Too many reset attempts.' } });
+const authLimiter    = rateLimit({ windowMs: 15*60*1000, max: 20, message: { error: 'Too many attempts, try again in 15 minutes.' } });
+const otpLimiter     = rateLimit({ windowMs:  5*60*1000, max: 10, message: { error: 'Too many OTP attempts.' } });
+const resetLimiter   = rateLimit({ windowMs: 60*60*1000, max:  5, message: { error: 'Too many reset attempts.' } });
+const smsTestLimiter = rateLimit({ windowMs: 60*60*1000, max:  5, message: { error: 'Too many test requests.' } });
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-const genOtp = () => crypto.randomInt(100000, 999999).toString();
-const otpExpiry = () => new Date(Date.now() + (parseInt(process.env.OTP_EXPIRY_MINS) || 10) * 60 * 1000);
-const hashOtp = (otp) => crypto.createHash('sha256').update(otp).digest('hex');
-
-// Use memory or mongo
 const db = {
   async findByEmail(email) {
     if (memStore.isActive()) return memStore.findByEmail(email);
-    const User = getUser();
-    return User ? User.findOne({ email }).select('+password +emailOtp +emailOtpExpiry +phoneOtp +phoneOtpExpiry +resetToken +resetTokenExpiry +resetPhoneOtp +resetPhoneOtpExpiry') : null;
+    const U = getUser();
+    return U ? U.findOne({ email }).select('+password +emailOtp +emailOtpExpiry +phoneOtp +phoneOtpExpiry +resetToken +resetTokenExpiry +resetPhoneOtp +resetPhoneOtpExpiry') : null;
   },
   async create(data) {
     if (memStore.isActive()) return memStore.create(data);
-    const User = getUser();
-    return User ? User.create(data) : null;
-  },
-  async findByResetToken(token) {
-    if (memStore.isActive()) return memStore.findByResetToken(token);
-    const User = getUser();
-    return User ? User.findOne({ resetToken: token, resetTokenExpiry: { $gt: Date.now() } }).select('+resetToken +resetTokenExpiry +resetPhoneOtp +resetPhoneOtpExpiry') : null;
+    const U = getUser();
+    return U ? U.create(data) : null;
   },
 };
 
+const genOtp    = () => crypto.randomInt(100000, 999999).toString();
+const otpExpiry = () => new Date(Date.now() + (parseInt(process.env.OTP_EXPIRY_MINS) || 10) * 60 * 1000);
+const hashOtp   = (otp) => crypto.createHash('sha256').update(otp).digest('hex');
+const maskPhone = (p) => { if (!p || p.length < 4) return '***'; return p.slice(0,-4).replace(/\d/g,'*') + p.slice(-4); };
+
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /api/auth/register  — Step 1: create account + send email OTP
+// GET /api/auth/sms-status
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/sms-status', (req, res) => {
+  const s = sms.getProviderStatus();
+  res.json({
+    providers: {
+      twilio:       s.twilio       ? '✓ configured' : '✗ not set',
+      fast2sms:     s.fast2sms     ? '✓ configured' : '✗ not set',
+      textbelt:     s.textbelt     ? '✓ configured' : '✗ not set',
+      emailGateway: s.emailGateway ? '✓ configured' : '✗ not set',
+    },
+    anyActive: s.anyConfigured,
+    mode:      s.anyConfigured ? 'live' : 'dev-console',
+    carriers:  Object.keys(sms.CARRIER_GATEWAYS),
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/auth/sms-test  (requires X-Admin-Token in production)
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/sms-test', smsTestLimiter, async (req, res) => {
+  const isAdmin = req.headers['x-admin-token'] && req.headers['x-admin-token'] === process.env.ADMIN_TOKEN;
+  if (process.env.NODE_ENV === 'production' && !isAdmin)
+    return res.status(403).json({ error: 'Requires X-Admin-Token header in production.' });
+
+  const { phone, carrier } = req.body;
+  if (!phone) return res.status(400).json({ error: 'phone is required.' });
+
+  const origCarrier = process.env.SMS_CARRIER;
+  if (carrier) process.env.SMS_CARRIER = carrier;
+
+  try {
+    const result = await sms.sendOtp(phone, 'test');
+    if (carrier) process.env.SMS_CARRIER = origCarrier;
+    res.json({
+      success:   true,
+      provider:  result.provider,
+      message:   `OTP sent via ${result.provider}. Check your phone.`,
+      expiresAt: new Date(result.expiresAt).toISOString(),
+      note:      result.provider === 'dev-console' ? 'No SMS provider configured — OTP in server logs.' : undefined,
+    });
+  } catch (err) {
+    if (carrier) process.env.SMS_CARRIER = origCarrier;
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/auth/register
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/register', authLimiter, validateRegister, async (req, res) => {
   try {
     const { fullName, email, phone, password } = req.body;
 
-    // Check duplicate
     const existing = await db.findByEmail(email);
     if (existing) {
-      // Timing-safe: same delay regardless
       await new Promise(r => setTimeout(r, 300));
       return res.status(409).json({ error: 'An account with this email already exists.' });
     }
 
     const otp = genOtp();
-    const user = await db.create({
-      fullName, email, phone, password,
-      emailOtp: hashOtp(otp),
-      emailOtpExpiry: otpExpiry(),
-    });
+    await db.create({ fullName, email, phone, password, emailOtp: hashOtp(otp), emailOtpExpiry: otpExpiry() });
 
     await sendVerificationOtp(email, otp);
-
-    // Log OTP in dev
-    if (!process.env.EMAIL_USER) logger.debug(`[DEV] Email OTP for ${email}: ${otp}`);
-
     req.session.regEmail = email;
 
     res.json({ success: true, step: 'verify-email', message: `Verification code sent to ${email}` });
@@ -79,7 +110,7 @@ router.post('/register', authLimiter, validateRegister, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /api/auth/verify-email  — Step 2: confirm email OTP → send phone OTP
+// POST /api/auth/verify-email  →  sends SMS via new engine
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/verify-email', otpLimiter, validateOtp, async (req, res) => {
   try {
@@ -90,26 +121,27 @@ router.post('/verify-email', otpLimiter, validateOtp, async (req, res) => {
     if (!user) return res.status(400).json({ error: 'User not found.' });
 
     if (!user.emailOtpExpiry || user.emailOtpExpiry < Date.now())
-      return res.status(400).json({ error: 'OTP has expired. Please request a new one.' });
+      return res.status(400).json({ error: 'OTP expired. Please request a new one.' });
 
     if (user.emailOtp !== hashOtp(req.body.otp))
       return res.status(400).json({ error: 'Invalid OTP. Please try again.' });
 
-    // Mark email verified
-    user.emailVerified = true;
-    user.emailOtp = undefined;
+    user.emailVerified  = true;
+    user.emailOtp       = undefined;
     user.emailOtpExpiry = undefined;
-
-    // Send phone OTP
-    const otp = genOtp();
-    user.phoneOtp = hashOtp(otp);
-    user.phoneOtpExpiry = otpExpiry();
     await user.save();
 
-    await sendSMS(user.phone, `Your SecureAuth verification code: ${otp}. Expires in ${process.env.OTP_EXPIRY_MINS || 10} mins.`);
-    if (!process.env.TWILIO_ACCOUNT_SID) logger.debug(`[DEV] Phone OTP for ${user.phone}: ${otp}`);
+    let provider = 'pending';
+    try {
+      const result = await sms.sendOtp(user.phone, 'verify');
+      req.session.smsPhone    = user.phone;
+      req.session.smsProvider = result.provider;
+      provider = result.provider;
+    } catch (smsErr) {
+      logger.warn('SMS send failed (user can resend):', smsErr.message);
+    }
 
-    res.json({ success: true, step: 'verify-phone', message: `Code sent to ${maskPhone(user.phone)}` });
+    res.json({ success: true, step: 'verify-phone', message: `Code sent to ${maskPhone(user.phone)}`, provider });
   } catch (err) {
     logger.error('Verify email error:', err);
     res.status(500).json({ error: 'Verification failed.' });
@@ -117,7 +149,7 @@ router.post('/verify-email', otpLimiter, validateOtp, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /api/auth/verify-phone  — Step 3: confirm phone OTP → activate account
+// POST /api/auth/verify-phone  →  verifies via SMS engine
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/verify-phone', otpLimiter, validateOtp, async (req, res) => {
   try {
@@ -127,19 +159,20 @@ router.post('/verify-phone', otpLimiter, validateOtp, async (req, res) => {
     const user = await db.findByEmail(email);
     if (!user) return res.status(400).json({ error: 'User not found.' });
 
-    if (!user.phoneOtpExpiry || user.phoneOtpExpiry < Date.now())
-      return res.status(400).json({ error: 'OTP has expired.' });
+    try {
+      sms.verifyOtp(user.phone, 'verify', req.body.otp);
+    } catch (e) {
+      return res.status(400).json({ error: e.message });
+    }
 
-    if (user.phoneOtp !== hashOtp(req.body.otp))
-      return res.status(400).json({ error: 'Invalid OTP.' });
-
-    user.phoneVerified = true;
-    user.isActive = true;
-    user.phoneOtp = undefined;
+    user.phoneVerified  = true;
+    user.isActive       = true;
+    user.phoneOtp       = undefined;
     user.phoneOtpExpiry = undefined;
     await user.save();
 
     delete req.session.regEmail;
+    delete req.session.smsPhone;
 
     await sendWelcomeEmail(email, user.fullName);
 
@@ -158,42 +191,35 @@ router.post('/login', authLimiter, validateLogin, async (req, res) => {
     const { email, password } = req.body;
     const user = await db.findByEmail(email);
 
-    // Timing-safe rejection
     if (!user) {
       await new Promise(r => setTimeout(r, 300));
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
-
     if (user.isLocked) {
       const mins = Math.ceil((user.lockUntil - Date.now()) / 60000);
       return res.status(423).json({ error: `Account locked. Try again in ${mins} minute(s).` });
     }
-
     if (!user.isActive)
       return res.status(403).json({ error: 'Account not verified. Please complete registration.' });
 
     const match = await user.comparePassword(password);
     if (!match) {
       await user.incLoginAttempts();
-      const remaining = Math.max(0, (parseInt(process.env.MAX_LOGIN_ATTEMPTS) || 5) - user.loginAttempts);
-      return res.status(401).json({ error: `Invalid email or password. ${remaining > 0 ? `${remaining} attempt(s) remaining.` : 'Account locked.'}` });
+      const rem = Math.max(0, (parseInt(process.env.MAX_LOGIN_ATTEMPTS)||5) - user.loginAttempts);
+      return res.status(401).json({ error: `Invalid email or password. ${rem > 0 ? rem+' attempt(s) remaining.' : 'Account locked.'}` });
     }
 
     await user.resetLoginAttempts();
-    user.lastLogin = new Date();
+    user.lastLogin   = new Date();
     user.lastLoginIp = req.ip;
     await user.save();
 
-    // Regenerate session to prevent fixation
     req.session.regenerate((err) => {
       if (err) return res.status(500).json({ error: 'Login failed.' });
-      req.session.userId = user._id || user.email;
+      req.session.userId    = user._id || user.email;
       req.session.userEmail = user.email;
-      req.session.userName = user.fullName;
-      res.json({
-        success: true,
-        user: { name: user.fullName, email: user.email, lastLogin: user.lastLogin },
-      });
+      req.session.userName  = user.fullName;
+      res.json({ success: true, user: { name: user.fullName, email: user.email, lastLogin: user.lastLogin } });
     });
   } catch (err) {
     logger.error('Login error:', err);
@@ -202,27 +228,22 @@ router.post('/login', authLimiter, validateLogin, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /api/auth/forgot-password — send email OTP
+// POST /api/auth/forgot-password
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/forgot-password', resetLimiter, async (req, res) => {
   try {
-    const email = req.body.email;
+    const { email } = req.body;
     if (!email) return res.status(400).json({ error: 'Email is required.' });
 
-    // Always return success to prevent user enumeration
     const user = await db.findByEmail(email);
-
     if (user && user.isActive) {
       const otp = genOtp();
-      user.resetToken = crypto.randomBytes(32).toString('hex');
+      user.resetToken       = crypto.randomBytes(32).toString('hex');
       user.resetTokenExpiry = otpExpiry();
-      user.emailOtp = hashOtp(otp);
-      user.emailOtpExpiry = otpExpiry();
+      user.emailOtp         = hashOtp(otp);
+      user.emailOtpExpiry   = otpExpiry();
       await user.save();
-
       await sendResetOtp(email, otp);
-      if (!process.env.EMAIL_USER) logger.debug(`[DEV] Reset OTP for ${email}: ${otp}`);
-
       req.session.resetEmail = email;
       req.session.resetToken = user.resetToken;
     }
@@ -235,7 +256,7 @@ router.post('/forgot-password', resetLimiter, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /api/auth/verify-reset-email — verify email OTP for reset
+// POST /api/auth/verify-reset-email  →  sends SMS via engine
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/verify-reset-email', otpLimiter, validateOtp, async (req, res) => {
   try {
@@ -249,19 +270,21 @@ router.post('/verify-reset-email', otpLimiter, validateOtp, async (req, res) => 
     if (user.emailOtp !== hashOtp(req.body.otp))
       return res.status(400).json({ error: 'Invalid OTP.' });
 
-    user.emailOtp = undefined;
+    user.emailOtp       = undefined;
     user.emailOtpExpiry = undefined;
-
-    // Now send phone OTP
-    const otp = genOtp();
-    user.resetPhoneOtp = hashOtp(otp);
-    user.resetPhoneOtpExpiry = otpExpiry();
     await user.save();
 
-    await sendSMS(user.phone, `SecureAuth password reset code: ${otp}. Expires in ${process.env.OTP_EXPIRY_MINS || 10} mins.`);
-    if (!process.env.TWILIO_ACCOUNT_SID) logger.debug(`[DEV] Reset Phone OTP: ${otp}`);
+    let provider = 'pending';
+    try {
+      const result = await sms.sendOtp(user.phone, 'reset');
+      req.session.resetSmsPhone    = user.phone;
+      req.session.resetSmsProvider = result.provider;
+      provider = result.provider;
+    } catch (smsErr) {
+      logger.warn('Reset SMS failed:', smsErr.message);
+    }
 
-    res.json({ success: true, step: 'verify-reset-phone', message: `Code sent to ${maskPhone(user.phone)}` });
+    res.json({ success: true, step: 'verify-reset-phone', message: `Code sent to ${maskPhone(user.phone)}`, provider });
   } catch (err) {
     logger.error('Verify reset email error:', err);
     res.status(500).json({ error: 'Verification failed.' });
@@ -269,7 +292,7 @@ router.post('/verify-reset-email', otpLimiter, validateOtp, async (req, res) => 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /api/auth/verify-reset-phone — verify phone OTP for reset
+// POST /api/auth/verify-reset-phone
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/verify-reset-phone', otpLimiter, validateOtp, async (req, res) => {
   try {
@@ -277,17 +300,20 @@ router.post('/verify-reset-phone', otpLimiter, validateOtp, async (req, res) => 
     if (!email) return res.status(400).json({ error: 'Session expired.' });
 
     const user = await db.findByEmail(email);
-    if (!user || !user.resetPhoneOtpExpiry || user.resetPhoneOtpExpiry < Date.now())
-      return res.status(400).json({ error: 'OTP expired.' });
+    if (!user) return res.status(400).json({ error: 'User not found.' });
 
-    if (user.resetPhoneOtp !== hashOtp(req.body.otp))
-      return res.status(400).json({ error: 'Invalid OTP.' });
+    try {
+      sms.verifyOtp(user.phone, 'reset', req.body.otp);
+    } catch (e) {
+      return res.status(400).json({ error: e.message });
+    }
 
-    user.resetPhoneOtp = undefined;
+    user.resetPhoneOtp       = undefined;
     user.resetPhoneOtpExpiry = undefined;
     await user.save();
 
     req.session.resetVerified = true;
+    delete req.session.resetSmsPhone;
 
     res.json({ success: true, step: 'new-password', message: 'Identity verified. Set your new password.' });
   } catch (err) {
@@ -297,7 +323,7 @@ router.post('/verify-reset-phone', otpLimiter, validateOtp, async (req, res) => 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /api/auth/reset-password — set new password
+// POST /api/auth/reset-password
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/reset-password', resetLimiter, validatePassword, async (req, res) => {
   try {
@@ -307,14 +333,12 @@ router.post('/reset-password', resetLimiter, validatePassword, async (req, res) 
     const user = await db.findByEmail(req.session.resetEmail);
     if (!user) return res.status(400).json({ error: 'User not found.' });
 
-    user.password = req.body.password;
-    user.resetToken = undefined;
+    user.password         = req.body.password;
+    user.resetToken       = undefined;
     user.resetTokenExpiry = undefined;
     await user.save();
 
-    // Destroy session
     req.session.destroy();
-
     res.json({ success: true, message: 'Password reset successfully. Please log in.' });
   } catch (err) {
     logger.error('Reset password error:', err);
@@ -323,34 +347,35 @@ router.post('/reset-password', resetLimiter, validatePassword, async (req, res) 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /api/auth/resend-otp — resend OTP
+// POST /api/auth/resend-otp
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/resend-otp', otpLimiter, async (req, res) => {
   try {
-    const { type } = req.body; // 'email-reg', 'phone-reg', 'email-reset', 'phone-reset'
+    const { type } = req.body;
     const email = req.session.regEmail || req.session.resetEmail;
     if (!email) return res.status(400).json({ error: 'Session expired.' });
 
     const user = await db.findByEmail(email);
     if (!user) return res.status(400).json({ error: 'User not found.' });
 
-    const otp = genOtp();
-
     if (type === 'email-reg' || type === 'email-reset') {
-      user.emailOtp = hashOtp(otp);
+      const otp = genOtp();
+      user.emailOtp       = hashOtp(otp);
       user.emailOtpExpiry = otpExpiry();
       await user.save();
       await (type === 'email-reset' ? sendResetOtp(email, otp) : sendVerificationOtp(email, otp));
-      if (!process.env.EMAIL_USER) logger.debug(`[DEV] Resent email OTP: ${otp}`);
-    } else {
-      user.phoneOtp = hashOtp(otp);
-      user.phoneOtpExpiry = otpExpiry();
-      await user.save();
-      await sendSMS(user.phone, `Your SecureAuth code: ${otp}`);
-      if (!process.env.TWILIO_ACCOUNT_SID) logger.debug(`[DEV] Resent phone OTP: ${otp}`);
+      return res.json({ success: true, message: 'New email code sent.' });
     }
 
-    res.json({ success: true, message: 'New code sent.' });
+    const purpose = type === 'phone-reset' ? 'reset' : 'verify';
+    try {
+      const result = await sms.sendOtp(user.phone, purpose);
+      res.json({ success: true, message: `New code sent via ${result.provider}.`, provider: result.provider });
+    } catch (smsErr) {
+      if (smsErr.code === 'RATE_LIMIT')
+        return res.status(429).json({ error: smsErr.message });
+      throw smsErr;
+    }
   } catch (err) {
     logger.error('Resend OTP error:', err);
     res.status(500).json({ error: 'Failed to resend code.' });
@@ -361,24 +386,18 @@ router.post('/resend-otp', otpLimiter, async (req, res) => {
 // POST /api/auth/logout
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/logout', (req, res) => {
-  req.session.destroy((err) => {
-    res.clearCookie('__Host-sid');
+  req.session.destroy(() => {
+    res.clearCookie('sid');
     res.json({ success: true, message: 'Logged out.' });
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GET /api/auth/me — check session
+// GET /api/auth/me
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/me', (req, res) => {
   if (!req.session.userId) return res.status(401).json({ authenticated: false });
   res.json({ authenticated: true, user: { name: req.session.userName, email: req.session.userEmail } });
 });
-
-// ─── Utils ────────────────────────────────────────────────────────────────────
-const maskPhone = (phone) => {
-  if (!phone || phone.length < 4) return '***';
-  return phone.slice(0, -4).replace(/\d/g, '*') + phone.slice(-4);
-};
 
 module.exports = router;

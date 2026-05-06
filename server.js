@@ -114,12 +114,15 @@ app.use('/api/auth', authRoutes);
 
 // ─── Health Check — always 200 so Railway never kills the container ──────────
 app.get('/health', (req, res) => {
-  const { getStatus } = require('./lib/db');
+  const { getStatus }      = require('./lib/db');
+  const { getProviderStatus } = require('./lib/sms');
+  const smsStatus          = getProviderStatus();
   res.status(200).json({
-    status: 'ok',
-    uptime: Math.floor(process.uptime()),
-    db: process.env.MONGODB_URI ? (getStatus() ? 'connected' : 'connecting') : 'memstore',
-    ts: Date.now(),
+    status:   'ok',
+    uptime:   Math.floor(process.uptime()),
+    db:       process.env.MONGODB_URI ? (getStatus() ? 'connected' : 'connecting') : 'memstore',
+    sms:      smsStatus.anyConfigured ? 'live' : 'dev-console',
+    ts:       Date.now(),
   });
 });
 

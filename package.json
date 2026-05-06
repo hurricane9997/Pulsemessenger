@@ -8,6 +8,7 @@
     "dev": "nodemon server.js"
   },
   "dependencies": {
+    "axios": "^1.16.0",
     "bcryptjs": "^2.4.3",
     "compression": "^1.7.4",
     "cookie-parser": "^1.4.6",
@@ -22,7 +23,6 @@
     "memorystore": "^1.6.8",
     "mongoose": "^8.0.3",
     "nodemailer": "^6.9.7",
-    "twilio": "^4.19.3",
     "validator": "^13.11.0",
     "winston": "^3.11.0",
     "xss": "^1.0.14"
